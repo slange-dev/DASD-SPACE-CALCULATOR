@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JCL SPACE Parameter Calculator</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .calculator {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .input-group {
+            margin-bottom: 15px;
+            position: relative;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select {
+            padding: 8px;
+            width: 200px;
+            margin-right: 10px;
+        }
+        button {
+            background-color: #0066cc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0052a3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            border-left: 4px solid #0066cc;
+        }
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 300px;
+            background-color: #333;
+            color: white;
+            text-align: left;
+            border-radius: 4px;
+            padding: 8px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -150px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 14px;
+            font-weight: normal;
+            white-space: pre-line; /* Enables new lines */
+        }
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+        .dataset-type {
+            margin-bottom: 20px;
+        }
+        .dataset-type label {
+            display: inline-block;
+            margin-right: 20px;
+            font-weight: normal;
+        }
+        input[type="radio"] {
+            width: auto;
+            margin-right: 5px;
+        }
+        .jcl-preview {
+            font-family: monospace;
+            white-space: pre-wrap;
+            background-color: #2d2d2d;
+            color: #ffffff;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .calculation-details {
+            font-size: 14px;
+            color: #666;
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="calculator">
+        <h1>JCL SPACE Parameter Calculator</h1>
+        <p>This tool helps you calculate the optimal SPACE parameter for your 
+            JCL datasets, ensuring efficient disk allocation. Whether you're working 
+            with partitioned (PDS) or sequential (PS) datasets, enter your dataset 
+            details, and the calculator will determine the appropriate primary and 
+            secondary space allocations in tracks or cylinders.</p>
+        
+        <div class="dataset-type">
+            <label>Dataset Type:</label>
+            <label><input type="radio" name="dstype" value="pds" checked> Partitioned</label>
+            <label><input type="radio" name="dstype" value="ps"> Sequential</label>
+        </div>
+
+        <div class="input-group tooltip">
+            <label for="dsname">Dataset Name:</label>
+            <input type="text" id="dsname" maxlength="44" oninput="this.value = this.value.toUpperCase()" onblur="validateDatasetName()">
+            <span class="tooltiptext">
+                High-level qualifiers followed by dataset name, max 44 characters (e.g., SYSP.TEST.JCL). 
+                Each qualifier max 8 chars, must start with a letter or @#$, up to 6 qualifiers.
+            </span>
+        </div>
+        
+        <div class="input-group tooltip">
+            <label for="recfm">Record Format:</label>
+            <select id="recfm">
+                <option value="F">F - Fixed</option>
+                <option value="FB" selected>FB - Fixed Blocked</option>
+                <option value="V">V - Variable</option>
+                <option value="VB">VB - Variable Blocked</option>
+                <option value="U">U - Undefined</option>
+            </select>
+            <span class="tooltiptext">
+F (Fixed): All records same length
+FB (Fixed Blocked): Multiple fixed-length records per block
+V (Variable): Records can vary in length
+VB (Variable Blocked): Multiple variable-length records per block
+U (Undefined): No predefined record format</span>
+        </div>
+
+        <div class="input-group tooltip">
+            <label for="lrecl">LRECL:</label>
+            <input type="number" id="lrecl" min="1" max="32760">
+            <span class="tooltiptext">Logical Record Length - maximum length of a record (1-32760)</span>
+        </div>
+
+        <div class="input-group tooltip">
+            <label for="volser">VOLSER:</label>
+            <input type="text" id="volser" maxlength="6" pattern="^[A-Za-z0-9]{1,6}$" oninput="this.value = this.value.toUpperCase()">
+            <span class="tooltiptext">Volume Serial Number - 1 to 6 alphanumeric characters (e.g., SYSDSK)</span>
+        </div>
+
+        <div class="input-group tooltip">
+            <label for="space-needed">Space Needed:</label>
+            <input type="number" id="space-needed" min="0" step="0.01">
+            <select id="unit">
+                <option value="KB">KB</option>
+                <option value="MB">MB</option>
+                <option value="GB">GB</option>
+                <option value="TB">TB</option>
+            </select>
+            <span class="tooltiptext">Total amount of space needed for the dataset</span>
+        </div>
+
+        <div class="input-group tooltip">
+            <label for="device-type">Device Type:</label>
+            <select id="device-type">
+                <option value="">Select device type...</option>
+            </select>
+            <span class="tooltiptext">DASD device type that will store the dataset</span>
+        </div>
+
+        <div class="calculator">
+            <button id="calculateButton" onclick="calculateSpace()">Calculate Parameters</button>
+            <div id="result" class="result" style="display: none;"></div>
+        </div>
+
+        <div id="result" class="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        const devices = [
+            { type: "3390-1", cylBytes: 849960, tracksPerCyl: 15, trackLength: 56664 },
+            { type: "3390-2", cylBytes: 849960, tracksPerCyl: 15, trackLength: 56664 },
+            { type: "3390-3", cylBytes: 849960, tracksPerCyl: 15, trackLength: 56664 },
+            { type: "3390-9", cylBytes: 849960, tracksPerCyl: 15, trackLength: 56664 },
+            { type: "3350", cylBytes: 572070, tracksPerCyl: 30, trackLength: 19069 },
+            { type: "2305-1", cylBytes: 113088, tracksPerCyl: 8, trackLength: 14136 },
+            { type: "2305-2", cylBytes: 117280, tracksPerCyl: 8, trackLength: 14660 },
+            { type: "2311", cylBytes: 36250, tracksPerCyl: 10, trackLength: 3625 },
+            { type: "2314", cylBytes: 145880, tracksPerCyl: 20, trackLength: 7294 },
+            { type: "3330-1", cylBytes: 247570, tracksPerCyl: 19, trackLength: 13030 },
+            { type: "3330-11", cylBytes: 247570, tracksPerCyl: 19, trackLength: 13030 },
+            { type: "3340-35", cylBytes: 100416, tracksPerCyl: 12, trackLength: 8368 },
+            { type: "3340-70", cylBytes: 100416, tracksPerCyl: 12, trackLength: 8368 },
+            { type: "3344", cylBytes: 100416, tracksPerCyl: 12, trackLength: 8368 },
+            { type: "3375", cylBytes: 427392, tracksPerCyl: 12, trackLength: 35616 },
+            { type: "3380 A/B/D/J", cylBytes: 712140, tracksPerCyl: 15, trackLength: 47476 },
+            { type: "3380 E", cylBytes: 712140, tracksPerCyl: 15, trackLength: 47476 },
+            { type: "3380 K", cylBytes: 712140, tracksPerCyl: 15, trackLength: 47476 },
+            { type: "EMC3380K+", cylBytes: 712140, tracksPerCyl: 15, trackLength: 47476 },
+            { type: "EMC3380K+-E", cylBytes: 712140, tracksPerCyl: 15, trackLength: 47476 },
+            { type: "3390-27", cylBytes: 849960, tracksPerCyl: 15, trackLength: 56664 },
+            { type: "3390-54", cylBytes: 849960, tracksPerCyl: 15, trackLength: 56664 },
+            { type: "9345-1", cylBytes: 696840, tracksPerCyl: 15, trackLength: 46456 },
+            { type: "9345-2", cylBytes: 696840, tracksPerCyl: 15, trackLength: 46456 }
+        ];
+
+        // Populate device type dropdown
+        const deviceSelect = document.getElementById('device-type');
+        devices.forEach(device => {
+            const option = document.createElement('option');
+            option.value = device.type;
+            option.textContent = device.type;
+            deviceSelect.appendChild(option);
+        });
+        deviceSelect.value = "3390-1"; // Select 3390-1 by default
+
+        function calculateOptimalBlocksize(device, recfm, lrecl) {
+            const trackLength = device.trackLength;
+            let blksize;
+
+            switch(recfm) {
+                case 'F':
+                    blksize = parseInt(lrecl);
+                    break;
+                case 'FB':
+                    // Calculate how many records can fit in a track
+                    const blockingFactor = Math.floor(trackLength / lrecl);
+                    // Use the largest multiple of LRECL that fits within track
+                    blksize = Math.min(32760, blockingFactor * lrecl);
+                    break;
+                case 'V':
+                    // Variable records need 4 bytes for RDW
+                    blksize = parseInt(lrecl) + 4;
+                    break;
+                case 'VB':
+                    // Variable blocked needs 4 bytes for BDW and 4 bytes for each RDW
+                    // Try to fit multiple records while leaving room for control words
+                    const maxSpace = Math.min(32760, trackLength);
+                    const recordSpace = parseInt(lrecl) + 4; // Include RDW
+                    const records = Math.floor((maxSpace - 4) / recordSpace); // Subtract BDW
+                    blksize = Math.min(32760, (records * recordSpace) + 4);
+                    break;
+                case 'U':
+                    // For undefined, use track length or 32760, whichever is smaller
+                    blksize = Math.min(32760, trackLength);
+                    break;
+            }
+
+            return blksize;
+        }
+
+        function validateDatasetName() {
+            let datasetInput = document.getElementById("dsname");
+            let datasetName = datasetInput.value.trim();
+            let resultDiv = document.getElementById("result");
+            let calculateButton = document.getElementById("calculateButton");
+
+            // JCL dataset naming rules:
+            // - Each qualifier is 1-8 characters long
+            // - Qualifiers must start with a letter (@#$ also allowed)
+            // - Up to 6 qualifiers separated by dots
+            let datasetRegex = /^(?!\d)[A-Z@#$][A-Z0-9@#$-]{0,7}(\.(?!\d)[A-Z@#$][A-Z0-9@#$-]{0,7}){0,5}$/;
+
+            if (!datasetRegex.test(datasetName)) {
+                resultDiv.textContent = "Invalid dataset name. Each qualifier max 8 chars, must start with a letter or @#$, up to 6 qualifiers.";
+                resultDiv.style.display = "block";  // Show error in result div
+                datasetInput.style.border = "2px solid red";
+                calculateButton.disabled = true; // Disable Calculate button
+                calculateButton.style.backgroundColor = "grey"; // Grey out button
+                calculateButton.style.cursor = "default";
+
+            } else {
+                resultDiv.style.display = "none"; // Hide result div when valid
+                datasetInput.style.border = "";
+                calculateButton.disabled = false; // Enable Calculate button
+                calculateButton.style.backgroundColor = "#0066cc"; // Reset button color
+                calculateButton.style.cursor = "pointer";
+            }
+        }
+
+
+        function calculateSpace() {
+            const spaceNeeded = parseFloat(document.getElementById('space-needed').value);
+            const unit = document.getElementById('unit').value;
+            const deviceType = document.getElementById('device-type').value;
+            const dsname = document.getElementById('dsname').value;
+            const volser = document.getElementById('volser').value;
+            const lrecl = parseInt(document.getElementById('lrecl').value);
+            const recfm = document.getElementById('recfm').value;
+            const isPDS = document.querySelector('input[name="dstype"]:checked').value === 'pds';
+            const resultDiv = document.getElementById('result');
+
+            if (!spaceNeeded || !deviceType || !lrecl) {
+                alert('Please fill in all required fields');
+                return;
+            }
+
+            // Convert input to bytes
+            let bytesNeeded = spaceNeeded;
+            switch(unit) {
+                case 'TB':
+                    bytesNeeded *= 1024;
+                case 'GB':
+                    bytesNeeded *= 1024;
+                case 'MB':
+                    bytesNeeded *= 1024;
+                case 'KB':
+                    bytesNeeded *= 1024;
+            }
+
+            const device = devices.find(d => d.type === deviceType);
+            
+            // Calculate optimal block size
+            const blksize = calculateOptimalBlocksize(device, recfm, lrecl);
+
+            // Calculate required tracks
+            const tracks = Math.ceil(bytesNeeded / device.trackLength);
+
+            // Convert tracks to cylinders
+            const tracksPerCyl = device.tracksPerCyl;
+            const cylinders = Math.floor(tracks / tracksPerCyl);
+            const remainingTracks = tracks % tracksPerCyl;
+
+            // Decide whether to allocate in TRACKS or CYLINDERS
+            let spaceUnit, primary, secondary;
+            if (cylinders === 0) {
+                spaceUnit = "TRK";
+                primary = tracks;
+                secondary = Math.ceil(primary * 0.15); // 15% rule
+            } else {
+                spaceUnit = "CYL";
+                primary = cylinders + (remainingTracks > 0 ? 1 : 0); // round up if partial cylinder
+                secondary = Math.ceil(primary * 0.15);
+            }
+
+            // Directory blocks (only for PDS)
+            const directoryBlocks = isPDS ? Math.max(5, Math.ceil(primary / 10)) : null;
+
+            // Construct JCL
+            let jcl = `//DATASET  DD  DSN=${dsname || '&DSNAME'},\n`;
+            jcl += `//             DISP=(NEW,CATLG,DELETE),\n`;
+            if (volser) {
+                jcl += `//             UNIT=${deviceType},VOL=SER=${volser},\n`;
+            } else {
+                jcl += `//             UNIT=${deviceType},\n`;
+            }
+            jcl += `//             DCB=(RECFM=${recfm},LRECL=${lrecl},BLKSIZE=${blksize}),\n`;
+            jcl += `//             SPACE=(${spaceUnit},(${primary},${secondary}${isPDS ? `,${directoryBlocks}` : ''}))`;
+
+
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = `
+                <h3>JCL:</h3>
+                <div class="jcl-preview">${jcl}</div>
+                <div class="calculation-details">
+                    <p>Calculations based on device ${deviceType}:</p>
+                    <ul>
+                        <li>Cylinder size: ${formatBytes(device.cylBytes)}</li>
+                        <li>Tracks per cylinder: ${device.tracksPerCyl}</li>
+                        <li>Track length: ${device.trackLength} bytes</li>
+                        <li>Optimal Block Size: ${blksize}</li>
+                    </ul>
+                </div>`;
+        }
+
+        function formatBytes(bytes) {
+            const units = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            let size = bytes;
+            let unitIndex = 0;
+            
+            while (size >= 1024 && unitIndex < units.length - 1) {
+                size /= 1024;
+                unitIndex++;
+            }
+            
+            return `${size.toFixed(2)} ${units[unitIndex]}`;
+        }
+        document.getElementById("calculateButton").disabled = true;
+        document.getElementById("calculateButton").style.backgroundColor = "grey";
+        document.getElementById("calculateButton").style.cursor = "default";
+        
+        // Add event listener for Enter key press on the form
+        const formElements = document.querySelectorAll('input, select'); // Select all input and select elements in the form
+        formElements.forEach(element => {
+            element.addEventListener('keydown', function(event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault(); // Prevent form submission
+                    calculateSpace();
+                }
+            });
+        });
+        
+    </script>
+</body>
+</html>
